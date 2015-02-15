@@ -1,25 +1,128 @@
----
-title: "Reproducible Research: Peer Assessment 1"
-output: 
-  html_document:
-    keep_md: true
----
+
+#Peer assesment 1
+##Alex English
+
+Download the data if it doesn't exist already
+```{r}
+zipFilename <- "activity.zip"
+if(!file.exists(zipFilename)) {
+    download.file("https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2Factivity.zip", zipFilename, method="curl")
+}
+
+uncompressedFilename <- "activity.csv"
+if(!file.exists(uncompressedFilename)){
+    unzip(zipFilename)
+}
+
+rawData <- read.csv(uncompressedFilename, stringsAsFactors=FALSE)
+```
 
 
-## Loading and preprocessing the data
+transform $date to the proper data format:
+```{r}
+rawData <- read.csv("activity.csv", stringsAsFactors=FALSE)
+rawData$date <- as.Date(rawData$date)
+```
+
+compute the total # of steps per day:
+```{r}
+totalStepsPerDay <- aggregate(steps ~ date, data = rawData, FUN="sum")
+head(totalStepsPerDay)
+```
+
+make a histogram of the total number of steps taken each day:
+```{r}
+hist(totalStepsPerDay$steps, main="Total steps taken in a day", xlab="Steps")
+```
+
+calculate mean/median of the number of steps per day
+```{r}
+steps_mean <- format(mean(totalStepsPerDay$steps), digits=7)
+steps_mean_formatted <- format(steps_mean, digits=7)
+steps_median <- median(totalStepsPerDay$steps)
+```
+
+the mean number of steps per day is `r steps_mean_formatted`  
+the median number of steps per day is `r steps_median`
 
 
+compute the average # of steps per interval, averaged across all days:
+```{r}
+averageStepsPerInterval <- aggregate(steps ~ interval, data = rawData, FUN="mean")
+head(averageStepsPerInterval)
+```
 
-## What is mean total number of steps taken per day?
+plot:
+
+```{r}
+plot(averageStepsPerInterval$interval, averageStepsPerInterval$steps, type="l", main="Average number of steps for interval", xlab="interval (minutes)", ylab="Number of steps")
+```
+
+```{r}
+max_steps <- max(averageStepsPerInterval$steps)
+max_interval <- averageStepsPerInterval[averageStepsPerInterval[,2] == max_steps,]
+max_interval_num <- max_interval[1]
+max_interval_mean_steps <- max_interval[2]
+```
 
 
-
-## What is the average daily activity pattern?
-
+The inteval with the maximum number of steps on average is interval `r max_interval[1]`, with an average of `r max_interval_mean_steps` steps
 
 
-## Imputing missing values
+Calculate the number of rows with missing data:
+```{r}
+num_data_with_na <- length(which(is.na(rawData$steps)))
+num_data_with_na
+```
 
 
+Create a new dataset with the missing data imputed as the average # of steps for that 
+interval, averaged across all days
+```{r}
+dataWithIntervalMeans <- merge(rawData, averageStepsPerInterval, by="interval")
+dataWithIntervalMeans$stepsImputed <- ifelse(
+    is.na(dataWithIntervalMeans$steps.x), 
+    dataWithIntervalMeans$steps.y, 
+    dataWithIntervalMeans$steps.x)
+```
 
-## Are there differences in activity patterns between weekdays and weekends?
+```{r}
+totalStepsPerDay <- aggregate(dataWithIntervalMeans$stepsImputed ~ date, data = dataWithIntervalMeans, FUN="sum")
+names(totalStepsPerDay)[2] <- "totalSteps"
+hist(totalStepsPerDay$totalSteps, main="Total steps taken in a day (imputing missing data)", xlab="Steps")
+```
+
+```{r}
+imputed_mean <- format(mean(totalStepsPerDay[,2]), digits=10)
+imputed_median <- format(median(totalStepsPerDay[,2]), digits=10)
+```
+
+the mean number of steps per day is `r imputed_mean`  
+the median number of steps per day is `r imputed_median`
+Interestingly, they are the same.
+
+Create a new factor varible that indicates if the date is a weekend
+```{r}
+weekend_days <- c("Saturday", "Sunday")
+dataWithIntervalMeans$isWeekend <- factor(
+    weekdays(dataWithIntervalMeans$date) %in% weekend_days, 
+    labels=c("Weekday", "Weekend"))
+sums <- aggregate(
+    dataWithIntervalMeans$stepsImputed, 
+    list(
+        isWeekend = dataWithIntervalMeans$isWeekend, 
+        interval=dataWithIntervalMeans$interval), 
+    mean)
+```
+
+
+Now let's analyse the data with that separation
+```{r}
+library(lattice)
+xyplot(
+  x ~ interval | isWeekend, 
+  data=sums, 
+  type="l",
+  ylab="Number of Steps",
+  layout=c(1,2))
+```
